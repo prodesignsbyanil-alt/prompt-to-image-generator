@@ -276,32 +276,65 @@ function TopBar({ theme, setTheme, auth, openLogin }) {
   );
 }
 
-// --- Login Modal ------------------------------------------------------------------
+// --- Login Modal ---
 function LoginModal({ isOpen, onClose, auth }) {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
-  useEffect(() => { if (isOpen) { setValue(""); setError(""); } }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setValue("");
+      setError("");
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  async function handleLogin() {
+    try {
+      if (!value.trim()) {
+        setError("⚠️ একটি ইমেইল দিতে হবে।");
+        return;
+      }
+      await auth.login(value.trim());
+      onClose();
+    } catch (e) {
+      setError(e.message || "Login ব্যর্থ হয়েছে।");
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-6">
-        <div className="text-lg font-semibold mb-2">Gmail Login</div>
-        <p className="text-sm text-zinc-500 mb-4">সাইন ইন করতে আপনার Gmail ইমেল দিন।</p>
+      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-6 shadow-xl">
+        <div className="text-lg font-semibold mb-3 text-center dark:text-white">
+          Gmail Login
+        </div>
+
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="example@gmail.com"
-          className="w-full px-3 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-transparent focus:outline-none"
+          className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-transparent focus:outline-none px-3 py-2 text-sm text-zinc-900 dark:text-white"
         />
-        {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
-        <div className="mt-4 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-2 text-sm rounded-xl border border-zinc-300 dark:border-zinc-700">Cancel</button>
+
+        {error && (
+          <div className="text-red-500 text-sm mt-2 text-center">{error}</div>
+        )}
+
+        <div className="flex justify-end gap-2 mt-4">
           <button
-            onClick={() => {
-              try { auth.login(value); onClose(); } catch (e) { setError(e.message); }
-            }}
-            className="px-3 py-2 text-sm rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-          >Login</button>
+            onClick={onClose}
+            className="px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 dark:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+          >
+            Cancel
+          </button>
+
+          <button
+            onClick={handleLogin}
+            className="px-3 py-2 text-sm rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:opacity-90 transition"
+          >
+            Login
+          </button>
         </div>
       </div>
     </div>
