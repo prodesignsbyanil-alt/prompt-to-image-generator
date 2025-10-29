@@ -1,3 +1,4 @@
+"use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Download, Eye, EyeOff, Moon, Sun, Pause, Play, Square, Trash2, RotateCcw, LogIn } from "lucide-react";
