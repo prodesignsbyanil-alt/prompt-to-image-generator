@@ -143,13 +143,66 @@ async function mockGenerate(prompt) {
 }
 
 const providerEngines = {
-  "Gemini": async (prompt, key) => mockGenerate(prompt),
+  // --- Google Imagen via Gemini ---
+  "Gemini": async (prompt, key) => {
+    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/imagen-2:generateImage?key=" + key, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, size: "1024x1024" }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || "Gemini error");
+    const b64 = json.image?.base64 || json.images?.[0]?.base64 || json.candidates?.[0]?.content?.parts?.[0]?.inline_data?.data;
+    if (!b64) throw new Error("Unexpected Gemini response");
+    return `data:image/png;base64,${b64}`;
+  },
+
+  // --- DALL·E (OpenAI) ---
+  "DALL·E (OpenAI)": async (prompt, key) => {
+    const res = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-image-1",
+        prompt,
+        size: "1024x1024",
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error?.message || "OpenAI error");
+    const b64 = json.data?.[0]?.b64_json;
+    return `data:image/png;base64,${b64}`;
+  },
+
+  // --- Stability AI ---
+  "Stability AI": async (prompt, key) => {
+    const res = await fetch("https://api.stability.ai/v1/generation/sd3/text-to-image", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        prompt,
+        width: 1024,
+        height: 1024,
+        output_format: "png",
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message || "Stability error");
+    const b64 = json.artifacts?.[0]?.base64;
+    return `data:image/png;base64,${b64}`;
+  },
+
+  // বাকি গুলো আপাতত মক রাখো
+  "Gemini Banana": async (prompt, key) => mockGenerate(prompt),
   "ChatGPT": async (prompt, key) => mockGenerate(prompt),
   "Bing AI": async (prompt, key) => mockGenerate(prompt),
   "Leonardo": async (prompt, key) => mockGenerate(prompt),
-  "DALL·E (OpenAI)": async (prompt, key) => mockGenerate(prompt),
-  "Gemini Banana": async (prompt, key) => mockGenerate(prompt),
-  "Stability AI": async (prompt, key) => mockGenerate(prompt),
 };
 
 // --- ZIP helper (JSZip dynamic import in browser) ---------------------------------
