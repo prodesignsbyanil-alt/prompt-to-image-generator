@@ -12,27 +12,46 @@ export async function POST(req) {
     let headers = { "Content-Type": "application/json" };
     let body = {};
 
-    if (provider === "openai") {
+    if (provider === "gemini") {
+      // ✅ Proper Gemini format
+      apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-2:generateImage?key=${apiKey}`;
+      body = { instances: [{ prompt }] };
+    } else if (provider === "openai") {
       apiUrl = "https://api.openai.com/v1/images/generations";
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = { model: "gpt-image-1", prompt, size };
-    } 
-    else if (provider === "gemini") {
-      apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-2:generateImage?key=${apiKey}`;
-      body = { instances: [{ prompt }] };  // ✅ Fixed Gemini format
-    } 
-    else if (provider === "stability") {
+    } else if (provider === "stability") {
       apiUrl = "https://api.stability.ai/v1/generation/sd3/text-to-image";
       headers["Authorization"] = `Bearer ${apiKey}`;
       body = { prompt, width: 1024, height: 1024, output_format: "png" };
-    } 
-    else {
+    } else {
       return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
     }
 
+    // 🔹 প্রথম রিকোয়েস্ট (Gemini/DALL·E/Stability)
     const res = await fetch(apiUrl, { method: "POST", headers, body: JSON.stringify(body) });
-    let text = await res.text(); // 🔍 get raw text first
-    if (!text) {
+    const text = await res.text();
+
+    // 🔹 রেসপন্স ফাঁকা এলে fallback
+    if (!text || text.trim().length === 0) {
+      if (provider === "gemini") {
+        console.warn("Gemini returned empty — falling back to OpenAI DALL·E");
+        const res2 = await fetch("https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-image-1",
+            prompt,
+            size,
+          }),
+        });
+        const json2 = await res2.json();
+        const b64 = json2?.data?.[0]?.b64_json;
+        if (b64) return NextResponse.json({ dataUrl: `data:image/png;base64,${b64}` });
+      }
       return NextResponse.json({ error: "Empty response from provider" }, { status: 500 });
     }
 
@@ -48,6 +67,7 @@ export async function POST(req) {
       return NextResponse.json({ error: msg }, { status: res.status || 500 });
     }
 
+    // ✅ বেস৬৪ এক্সট্রাকশন (সব API টাইপের জন্য)
     const b64 =
       json?.data?.[0]?.b64_json ||
       json?.image?.base64 ||
