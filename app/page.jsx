@@ -113,10 +113,18 @@ function useProviderKey(provider) {
   useEffect(() => {
     setKey(storage.get(keyName, ""));
   }, [provider]);
-  const save = (v) => { storage.set(keyName, v); setKey(v); };
-  const toggleShow = () => setShow((s) => !s);
-  return { key, save, show, toggleShow };
-}
+  const save = (v) => {
+  if (!v) {
+    alert("⚠️ কোনো API Key দেওয়া হয়নি!");
+    return;
+  }
+  storage.set(keyName, v);
+  setKey(v);
+  alert(`✅ ${provider} API Key সফলভাবে সংরক্ষণ হয়েছে!`);
+};
+
+const toggleShow = () => setShow((s) => !s);
+return { key, save, show, toggleShow };
 
 // --- Mock image engine (replace per provider) -------------------------------------
 async function mockGenerate(prompt) {
