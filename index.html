@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SVG Rename + Adobe Stock CSV (Online, No-Server)</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <style>
+    :root { --bg:#0b0c10; --card:#121318; --ink:#e8ecf1; --sub:#9fb0c3; --accent:#4fc3f7; }
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px;}
+    .card{background:var(--card);border:1px solid #1e2128;border-radius:16px;padding:16px 18px;box-shadow:0 4px 24px rgba(0,0,0,.25);}
+    h1{font-size:20px;margin:0 0 12px;}
+    h2{font-size:16px;margin:18px 0 8px;color:var(--sub)}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
+    label{font-weight:600}
+    input[type="text"], input[type="number"]{background:#0e1016;color:var(--ink);border:1px solid #222634;border-radius:10px;padding:8px 10px;min-width:260px}
+    input[type="file"]{accent-color:var(--accent)}
+    button{background:linear-gradient(180deg,#2d8cff,#4fc3f7);border:0;color:#06121e;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}
+    button.secondary{background:#222a36;color:#dbe7f5;border:1px solid #2f3b51}
+    .muted{color:var(--sub);font-size:12px}
+    .grid{display:grid;grid-template-columns:1fr 1fr; gap:14px}
+    .w100{width:100%}
+    .checkbox{display:flex;gap:8px;align-items:center}
+    .log{background:#0b0f15;border:1px solid #1e2a3c;border-radius:10px;padding:10px;height:180px;overflow:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;white-space:pre-wrap}
+    .hr{height:1px;background:#1e2531;margin:12px 0}
+    .badge{display:inline-block;background:#1a2634;color:#cfe6ff;border:1px solid #29425e;padding:2px 8px;border-radius:20px;font-size:12px;margin-right:6px}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap}
+    .pill{display:inline-flex;align-items:center;gap:6px;background:#1b2432;border:1px solid #2e3a4d;border-radius:999px;padding:4px 10px}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>SVG Rename + Adobe Stock CSV (100% Browser)</h1>
+      <div class="muted">Pick a folder (or multiple files). We’ll create: <span class="badge">Adobe Stock CSV</span> and <span class="badge">Renamed ZIP (+&lt;title&gt;)</span>. Nothing uploads.</div>
+
+      <h2>1) Pick SVGs & optional mapping</h2>
+      <div class="row">
+        <div class="pill"><strong>SVGs:</strong> <input id="files" type="file" accept=".svg" webkitdirectory multiple></div>
+        <div class="pill"><strong>Mapping CSV (old,new/title):</strong> <input id="mapping" type="file" accept=".csv"></div>
+      </div>
+
+      <h2>2) Options</h2>
+      <div class="grid">
+        <div>
+          <div class="row">
+            <label>Min keywords</label>
+            <input id="minK" type="number" min="7" max="50" step="1" value="25">
+          </div>
+          <div class="row">
+            <label>Global seed keywords</label>
+            <input id="seeds" type="text" placeholder="silhouette, minimal, line art, isolated">
+          </div>
+          <div class="row checkbox"><input id="allowTech" type="checkbox" checked> <label for="allowTech">Allow technical terms (vector, icon)</label></div>
+          <div class="row checkbox"><input id="strictUnique" type="checkbox" checked> <label for="strictUnique">Strict unique keywords</label></div>
+          <div class="row checkbox"><input id="collapsePlurals" type="checkbox" checked> <label for="collapsePlurals">Collapse plural variants (snowflake/snowflakes)</label></div>
+        </div>
+        <div>
+          <div class="row checkbox"><input id="packStyle" type="checkbox" checked> <label for="packStyle">Style pack</label></div>
+          <div class="row checkbox"><input id="packComp" type="checkbox" checked> <label for="packComp">Composition pack</label></div>
+          <div class="row checkbox"><input id="packSeason" type="checkbox" checked> <label for="packSeason">Seasonal pack</label></div>
+          <div class="hr"></div>
+          <div class="row checkbox"><input id="embedTitle" type="checkbox" checked> <label for="embedTitle">Embed &lt;title&gt; into SVGs</label></div>
+          <div class="row checkbox"><input id="embedAsset" type="checkbox"> <label for="embedAsset">Embed asset_id into &lt;metadata&gt;</label></div>
+        </div>
+      </div>
+
+      <h2>3) Actions</h2>
+      <div class="toolbar">
+        <button id="btnCsv">Export Adobe Stock CSV</button>
+        <button class="secondary" id="btnPreview">Preview Rename (no download)</button>
+        <button id="btnZip">Download Renamed ZIP</button>
+        <button class="secondary" id="btnMap">Generate Mapping CSV</button>
+        <button class="secondary" id="btnList">Export File List (TXT)</button>
+      </div>
+
+      <h2>Log</h2>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+<script>
+// ---------- Helpers ----------
+const SMART_SET = new Set(`winter winters snow snowy snowflake snowflakes flake flakes crystal crystals frost frosty ice icy
+activity activities family families kid kids child children baby babies couple couples people person group groups
+christmas xmas santa claus reindeer sleigh sled sledding elf elves gingerbread cookie cookies cocoa
+mug cup cups hot chocolate marshmallow marshmallows candy cane canes lollipop peppermint
+tree trees pine spruce fir branch branches pinecone pinecones cone cones leaf leaves holly mistletoe poinsettia
+wreath wreaths garland garlands ribbon ribbons bow bows ornament ornaments bauble baubles star stars moon moons
+angel angels nativity jesus mary joseph holy bible church chapel village town city skyline cabin hut chalet house home
+gift gifts present presents box boxes bag bags tag tags label labels badge badges seal seals stamp stamps
+stocking stockings fireplace chimney ladder rooftop roof window windows frame frames border borders corner corners
+deer fox rabbit owl bear penguin polar arctic seal dog cat bird mouse hedgehog
+north pole sign signs arrow arrows banner banners poster posters flyer flyers signpost signposts
+pattern patterns seamless repeat repeating
+typography letter letters lettering monogram monograms initial initials script retro vintage kawaii cute minimal modern geometric abstract
+mandala mandalas cutout cutouts shadow box lightbox layer layers layered
+vector svg silhouette silhouettes icon icons outline outlines contour contours stencil stencils laser cut cricut paper papercraft craft crafts
+bouquet bouquets floral florals flower flowers bloom blooms petal petals sprig sprigs
+night day eve holiday holidays season seasonal wintertime`.split(/\s+/));
+
+const STOPWORDS_BASE = new Set(`the a an and or of with for to from by in on at into onto over under above below near far very more less
+is are was were be been being this that these those it its their his her our your my
+eps ai file files set pack template mockup`.split(/\s+/));
+
+const THESAURUS = {
+  christmas:["holiday","xmas","winter","festive","season","merry"],
+  santa:["father christmas","saint nicholas","sleigh","gift","present"],
+  reindeer:["caribou","horns","antlers","sleigh"],
+  snow:["winter","frost","ice","cold","snowflake"],
+  wreath:["garland","ring","door decor"],
+  gingerbread:["cookie","biscuit","dessert","sweet"],
+  silhouette:["outline","contour","stencil"],
+  vector:["svg","illustration","icon"],
+  floral:["flower","botanical","petal","bouquet"],
+  penguin:["bird","arctic"],
+  deer:["reindeer","animal","antler"],
+  tree:["pine","fir","spruce","evergreen"]
+};
+
+const STYLE_PACK = ["silhouette","outline","contour","stencil","line art","monoline","minimal","black and white","vector","icon"];
+const COMP_PACK = ["isolated","white background","copy space","centered","negative space","collection","set"];
+const SEASON_PACK = ["christmas","xmas","winter","holiday","festive","santa","reindeer","snow","snowflake","gift","present","tree","wreath"];
+
+const logEl = document.getElementById('log');
+function log(msg){ logEl.textContent += msg + "\\n"; logEl.scrollTop = logEl.scrollHeight; }
+function clearLog(){ logEl.textContent = ""; }
+
+function asciiNormalize(s){
+  return s.normalize('NFKD').replace(/[^\u0000-\u007E]/g,''); // strip accents
+}
+
+function sentenceCaseLettersSpaces(txt, fallback="Title"){
+  txt = asciiNormalize(txt || "");
+  txt = txt.replace(/[^A-Za-z ]+/g, ' ').replace(/\s+/g,' ').trim().toLowerCase();
+  if(!txt) txt = fallback.toLowerCase();
+  return txt.charAt(0).toUpperCase() + txt.slice(1);
+}
+
+function smartSpaceWords(s){
+  if (/[\\s_\\-]/.test(s)){
+    return s.replace(/[_\\-]+/g,' ').replace(/\\s+/g,' ').trim();
+  }
+  s = (s||"").toLowerCase().replace(/[^a-z]/g,'');
+  if(!s) return '';
+  const out=[];
+  let i=0;
+  const maxLen = 20;
+  while(i<s.length){
+    let best=null;
+    for(let L=Math.min(maxLen, s.length-i); L>0; L--){
+      const chunk = s.slice(i,i+L);
+      if(SMART_SET.has(chunk)){ best=chunk; break; }
+    }
+    if(best){ out.push(best); i+=best.length; }
+    else{ out.push(s[i]); i+=1; }
+  }
+  // merge singles
+  const merged=[];
+  for(const tok of out){
+    if(merged.length && tok.length===1 && merged[merged.length-1].length===1){
+      merged[merged.length-1]+=tok;
+    }else merged.push(tok);
+  }
+  return merged.join(' ').replace(/\\s+/g,' ').trim();
+}
+
+function makeSentenceFromStem(stem, smart=true){
+  const base = smart ? smartSpaceWords(stem) : stem;
+  return sentenceCaseLettersSpaces(base, "Title");
+}
+
+function tokenizeTerms(text){
+  text = asciiNormalize(text || "").replace(/[^A-Za-z ]+/g,' ').toLowerCase();
+  return text.trim().split(/\\s+/).filter(Boolean);
+}
+
+function pluralVariants(w){
+  const out=new Set();
+  if(w.length>=3 && w.endsWith('y')) out.add(w.slice(0,-1)+'ies');
+  if(!w.endsWith('s')) out.add(w+'s');
+  if(w.endsWith('s')) out.add(w.slice(0,-1));
+  return Array.from(out);
+}
+
+function splitCSVKeywords(s){
+  return (s||"").split(',').map(x=>x.trim()).filter(Boolean);
+}
+
+function refineKeywords(kwString, {strictUnique=true, collapsePlurals=false, limit=null}={}){
+  const toks = splitCSVKeywords(kwString);
+  const canon = w => w.trim().toLowerCase().replace(/\\s+/g,' ');
+  const singular = w => {
+    w=w.toLowerCase();
+    if(w.length>=4 && w.endsWith('ies')) return w.slice(0,-3)+'y';
+    if(w.length>=4 && w.endsWith('ses')) return w.slice(0,-2);
+    if(w.length>=4 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0,-1);
+    return w;
+  };
+  const out=[], seen=new Set(), baseSeen=new Set();
+  for(const t of toks){
+    const c=canon(t); if(!c) continue;
+    if(strictUnique && seen.has(c)) continue;
+    const key = collapsePlurals ? singular(c) : c;
+    if(strictUnique && baseSeen.has(key)) continue;
+    out.push(c); seen.add(c); baseSeen.add(key);
+  }
+  return out.slice(0, limit ? Math.max(0, parseInt(limit)) : out.length).join(', ');
+}
+
+async function sha256Hex(buffer){
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function canonicalSvgText(svgString){
+  try{
+    // drop <metadata> and collapse whitespace
+    let t = svgString.replace(/<metadata[\\s\\S]*?<\\/metadata>/gi, '');
+    t = t.replace(/\\s+/g,' ').trim();
+    return t;
+  }catch(e){
+    return svgString;
+  }
+}
+
+function insertTitle(svgString, title){
+  // remove any existing <title> then insert as first child
+  let s = svgString.replace(/<title[\\s\\S]*?<\\/title>/i, '');
+  s = s.replace(/<svg([^>]*)>/i, (m,attrs)=>`<svg${attrs}><title>${title}</title>`);
+  return s;
+}
+
+function embedAssetId(svgString, assetId){
+  // add or append into <metadata>
+  if(/<metadata[\\s\\S]*?<\\/metadata>/i.test(svgString)){
+    return svgString.replace(/<metadata(.*?)>([\\s\\S]*?)<\\/metadata>/i, (m,a,inner)=>`<metadata${a}>${inner} asset_id:${assetId}</metadata>`);
+  }else{
+    return svgString.replace(/<svg([^>]*)>/i, (m,attrs)=>`<svg${attrs}><metadata>asset_id:${assetId}</metadata>`);
+  }
+}
+
+function buildKeywords({title, stem, context, minK=25, allowTech=true, useStyle=true, useComp=true, useSeason=true, seeds=''}){
+  const stop = new Set(STOPWORDS_BASE);
+  if(allowTech){ ['vector','icon','icons'].forEach(t=>stop.delete(t)); }
+
+  const bag = [];
+  for(const src of [title, stem, context, seeds]){
+    if(!src) continue;
+    bag.push(...tokenizeTerms(src));
+  }
+
+  const expanded = [];
+  for(const w of bag){
+    expanded.push(w);
+    if(THESAURUS[w]) expanded.push(...THESAURUS[w]);
+  }
+  if(useStyle) expanded.push(...STYLE_PACK);
+  if(useComp) expanded.push(...COMP_PACK);
+  if(useSeason) expanded.push(...SEASON_PACK);
+
+  const uniq=[], seen=new Set();
+  for(let w of expanded){
+    w = w.replace(/[^a-z]+/g,'').toLowerCase();
+    if(!w || stop.has(w)) continue;
+    if(!seen.has(w)){ uniq.push(w); seen.add(w); }
+  }
+
+  if(uniq.length < minK){
+    const cands=[];
+    for(const w of Array.from(uniq)){
+      const th = THESAURUS[w] || [];
+      th.forEach(v=>{
+        v=v.replace(/[^a-z]+/g,''); if(v && !seen.has(v) && !stop.has(v)) cands.push(v);
+      });
+      pluralVariants(w).forEach(pv=>{
+        pv = pv.replace(/[^a-z]+/g,'');
+        if(pv && !seen.has(pv) && !stop.has(pv)) cands.push(pv);
+      });
+    }
+    if(useStyle) cands.push(...STYLE_PACK.map(x=>x.replace(/[^a-z]+/g,'')));
+    if(useComp) cands.push(...COMP_PACK.map(x=>x.replace(/[^a-z]+/g,'')));
+    if(useSeason) cands.push(...SEASON_PACK.map(x=>x.replace(/[^a-z]+/g,'')));
+    for(const c of cands){
+      if(!seen.has(c)){ uniq.push(c); seen.add(c); }
+      if(uniq.length>=minK) break;
+    }
+  }
+
+  return uniq.slice(0, Math.max(7, minK)).join(', ');
+}
+
+function alphaSuffixes(){
+  function* gen(){
+    yield "";
+    let L=1;
+    function* rec(n, prefix=""){
+      if(n===0){ yield prefix; return; }
+      for(let i=0;i<26;i++){
+        yield* rec(n-1, prefix + String.fromCharCode(97+i));
+      }
+    }
+    while(true){
+      for(const s of rec(L)) yield (s?(" "+s):"");
+      L++;
+    }
+  }
+  return gen();
+}
+
+// Detect mapping CSV columns
+function parseMappingCSV(text){
+  const parsed = Papa.parse(text, {header:true, skipEmptyLines:true});
+  if(parsed.errors.length){ console.warn(parsed.errors); }
+  const rows = parsed.data;
+  const norm = h => (h||"").toString().trim().toLowerCase().replace(/[\\s_\\-]+/g,'');
+  const headers = parsed.meta.fields || [];
+  const lookup = {}; headers.forEach(h => lookup[norm(h)] = h);
+  const oldKeys = ['old','current','currentname','existing','source','filename','oldname','from','orig','original'];
+  const newKeys = ['new','target','newname','rename','dest','destination','final','proposed','to','result','filename_new','title'];
+  let ok = headers[0], nk = headers[1] || headers[0];
+  for(const k of oldKeys){ if(lookup[k]) { ok = lookup[k]; break; } }
+  for(const k of newKeys){ if(lookup[k]) { nk = lookup[k]; break; } }
+  const pairs = rows.map(r => [ (r[ok]||'').toString().trim(), (r[nk]||'').toString().trim() ]);
+  return pairs;
+}
+
+document.getElementById('btnMap').addEventListener('click', async () => {
+  const files = Array.from(document.getElementById('files').files).filter(f=>/\\.svg$/i.test(f.name));
+  if(files.length===0){ alert('Pick some SVGs first.'); return; }
+  const rows = [["old","new","title"]];
+  for(const f of files){
+    const stem = f.name.replace(/\\.svg$/i,'');
+    const title = makeSentenceFromStem(stem,true);
+    rows.push([f.name, title, title]);
+  }
+  const csv = rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(',')).join('\\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  saveAs(blob, 'mapping.csv');
+  log(`Generated mapping.csv with ${files.length} rows.`);
+});
+
+document.getElementById('btnList').addEventListener('click', () => {
+  const files = Array.from(document.getElementById('files').files).map(f=>f.webkitRelativePath || f.name);
+  if(files.length===0){ alert('Pick some SVGs first.'); return; }
+  const txt = files.sort((a,b)=>a.localeCompare(b)).join('\\n');
+  saveAs(new Blob([txt], {type:'text/plain;charset=utf-8'}), 'file_list.txt');
+  log(`Exported file_list.txt (${files.length} entries).`);
+});
+
+document.getElementById('btnPreview').addEventListener('click', async () => {
+  clearLog();
+  const files = Array.from(document.getElementById('files').files).filter(f=>/\\.svg$/i.test(f.name));
+  if(files.length===0){ alert('Pick some SVGs first.'); return; }
+  const mappingFile = document.getElementById('mapping').files[0];
+  let mapping = null;
+  if(mappingFile){
+    const text = await mappingFile.text();
+    mapping = parseMappingCSV(text);
+  }
+  const pairs = new Map();
+  if(mapping){ mapping.forEach(([o,n])=>pairs.set(o.toLowerCase().endsWith('.svg')?o.toLowerCase(): (o.toLowerCase()+'.svg'), n)); }
+
+  const smart = true;
+  const existing = new Set(); // to enforce unique new names
+  for(const f of files){
+    const newOrTitle = pairs.get(f.name.toLowerCase()) || makeSentenceFromStem(f.name.replace(/\\.svg$/i,''), smart);
+    // sentence case letters + spaces only
+    const title = sentenceCaseLettersSpaces(newOrTitle, "Title");
+    // unique filenames using alphabetic suffixes
+    const gen = alphaSuffixes();
+    let candidate; while(true){ const suf = gen.next().value; candidate = `${title}${suf}.svg`; if(!existing.has(candidate.toLowerCase())) break; }
+    existing.add(candidate.toLowerCase());
+    log(`DRY: ${f.name}  ->  ${candidate}  |  title: ${title}`);
+  }
+  log('Preview complete. No files were downloaded.');
+});
+
+document.getElementById('btnCsv').addEventListener('click', async () => {
+  clearLog();
+  const files = Array.from(document.getElementById('files').files).filter(f=>/\\.svg$/i.test(f.name));
+  if(files.length===0){ alert('Pick some SVGs first.'); return; }
+  const opts = getOpts();
+  const mappingFile = document.getElementById('mapping').files[0];
+  let mapping = null;
+  if(mappingFile){
+    const text = await mappingFile.text();
+    mapping = parseMappingCSV(text);
+  }
+  const pairs = new Map();
+  if(mapping){ mapping.forEach(([o,n])=>pairs.set(o.toLowerCase().endsWith('.svg')?o.toLowerCase(): (o.toLowerCase()+'.svg'), n)); }
+
+  const rows = [["asset_id","filename","title","keywords","sha256_bin","sha256_svg_norm"]];
+  const parentCtx = parentFolderName(files);
+
+  // name uniqueness
+  const used = new Set();
+
+  for(const f of files){
+    const buf = await f.arrayBuffer();
+    const shaBin = await sha256Hex(buf);
+    const text = new TextDecoder().decode(new Uint8Array(buf));
+    const canon = canonicalSvgText(text);
+    const shaSvg = await sha256Hex(new TextEncoder().encode(canon));
+    const assetId = (shaSvg || shaBin).slice(0,10);
+
+    const newOrTitle = pairs.get(f.name.toLowerCase()) || makeSentenceFromStem(f.name.replace(/\\.svg$/i,''), true);
+    const title = sentenceCaseLettersSpaces(newOrTitle, "Title");
+    const context = `${folderOf(f)} ${parentCtx}`.trim();
+    let keywords = buildKeywords({
+      title, stem:f.name.replace(/\\.svg$/i,''), context,
+      minK: opts.minK, allowTech:opts.allowTech,
+      useStyle:opts.packStyle, useComp:opts.packComp, useSeason:opts.packSeason,
+      seeds:opts.seeds
+    });
+    keywords = refineKeywords(keywords, {strictUnique:opts.strictUnique, collapsePlurals:opts.collapsePlurals, limit:null});
+
+    const newName = uniqueFilenameFor(title, used);
+    rows.push([assetId, newName, title, keywords, shaBin, shaSvg]);
+  }
+
+  const csv = rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(',')).join('\\n');
+  saveAs(new Blob([csv], {type:'text/csv;charset=utf-8'}), 'adobe_stock_export.csv');
+  log(`Exported adobe_stock_export.csv (${files.length} rows).`);
+});
+
+document.getElementById('btnZip').addEventListener('click', async () => {
+  clearLog();
+  const files = Array.from(document.getElementById('files').files).filter(f=>/\\.svg$/i.test(f.name));
+  if(files.length===0){ alert('Pick some SVGs first.'); return; }
+  const opts = getOpts();
+  const mappingFile = document.getElementById('mapping').files[0];
+  let mapping = null;
+  if(mappingFile){
+    const text = await mappingFile.text();
+    mapping = parseMappingCSV(text);
+  }
+  const pairs = new Map();
+  if(mapping){ mapping.forEach(([o,n])=>pairs.set(o.toLowerCase().endsWith('.svg')?o.toLowerCase(): (o.toLowerCase()+'.svg'), n)); }
+
+  const zip = new JSZip();
+  const used = new Set();
+  const parentCtx = parentFolderName(files);
+
+  for(const f of files){
+    const buf = await f.arrayBuffer();
+    const text = new TextDecoder().decode(new Uint8Array(buf));
+    const canon = canonicalSvgText(text);
+    const shaSvg = await sha256Hex(new TextEncoder().encode(canon));
+    const shaBin = await sha256Hex(buf);
+    const assetId = (shaSvg || shaBin).slice(0,10);
+
+    const newOrTitle = pairs.get(f.name.toLowerCase()) || makeSentenceFromStem(f.name.replace(/\\.svg$/i,''), true);
+    const title = sentenceCaseLettersSpaces(newOrTitle, "Title");
+    const context = `${folderOf(f)} ${parentCtx}`.trim();
+
+    let svgOut = text;
+    if(opts.embedTitle){ svgOut = insertTitle(svgOut, title); }
+    if(opts.embedAsset){ svgOut = embedAssetId(svgOut, assetId); }
+    const newName = uniqueFilenameFor(title, used);
+    zip.file(newName, svgOut);
+    log(`ADD: ${f.name} -> ${newName}`);
+  }
+
+  const blob = await zip.generateAsync({type:'blob'});
+  saveAs(blob, 'renamed_svgs.zip');
+  log('ZIP ready.');
+});
+
+function uniqueFilenameFor(title, used){
+  const gen = alphaSuffixes();
+  let candidate;
+  while(true){
+    const suf = gen.next().value;
+    candidate = `${title}${suf}.svg`;
+    if(!used.has(candidate.toLowerCase())) break;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+function getOpts(){
+  return {
+    minK: parseInt(document.getElementById('minK').value || '25', 10),
+    seeds: document.getElementById('seeds').value || '',
+    allowTech: document.getElementById('allowTech').checked,
+    strictUnique: document.getElementById('strictUnique').checked,
+    collapsePlurals: document.getElementById('collapsePlurals').checked,
+    packStyle: document.getElementById('packStyle').checked,
+    packComp: document.getElementById('packComp').checked,
+    packSeason: document.getElementById('packSeason').checked,
+    embedTitle: document.getElementById('embedTitle').checked,
+    embedAsset: document.getElementById('embedAsset').checked
+  };
+}
+
+function folderOf(f){
+  // Attempt to get immediate folder name from webkitRelativePath
+  const p = (f.webkitRelativePath || f.name).split('/');
+  if(p.length>1) return p[p.length-2];
+  return '';
+}
+function parentFolderName(files){
+  // Heuristic: parent of the first file's folder
+  const first = files[0];
+  const pth = first.webkitRelativePath || first.name;
+  const parts = pth.split('/');
+  if(parts.length >= 3) return parts[parts.length-3];
+  return '';
+}
+</script>
+</body>
+</html>
